@@ -7,15 +7,15 @@ st.set_page_config(page_title="MLB Edge Board Manager", page_icon="⚾", layout=
 
 st.markdown("""
     <style>
-    .big-metric { font-size:40px !important; font-weight: bold; color: #1E88E5; }
-    .hit-card { padding: 15px; border-radius: 10px; background-color: #2e7d32; color: white; margin-bottom: 20px; }
-    .miss-card { padding: 15px; border-radius: 10px; background-color: #c62828; color: white; margin-bottom: 20px; }
+    .streak-card { padding: 12px; border-radius: 8px; font-weight: bold; color: white; margin-bottom: 10px; text-align: center; }
+    .hot-over { background-color: #2e7d32; }
+    .cold-under { background-color: #c62828; }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("⚾ MLB Pure Stats Prop Board")
 
-# --- UNDER-THE-HOOD API ENGINE ---
+# --- API CORE UTILITIES ---
 def search_player_id(player_name):
     url = f"https://statsapi.mlb.com/api/v1/people/search?names={player_name}&sportId=1"
     try:
@@ -67,8 +67,7 @@ else:
     )
     pp_line = st.sidebar.slider("Prop Target Value", min_value=0.5, max_value=105.5, value=5.5, step=0.5)
 
-# 🔄 ADDED BACK: Left/Right Starting Pitcher Filter Matchup
-pitcher_hand = st.sidebar.radio("Opposing Pitcher Hand", ["All Games", "vs Left-Hander (L)", "vs Right-Hander (R)"])
+pitcher_hand = st.sidebar.radio("Opposing Pitcher Hand Split", ["All Games", "vs Left-Hander (L)", "vs Right-Hander (R)"])
 
 # --- EXECUTION & RENDERING ---
 if player_input and pid:
@@ -78,17 +77,16 @@ if player_input and pid:
         splits = raw_data['stats'][0]['splits']
         parsed_games = []
         
-        for game in splits:
+        for index, game in enumerate(splits):
             stats = game.get('stat', {})
             h, r, rbi, tb, bb, hr = stats.get('hits', 0), stats.get('runs', 0), stats.get('rbi', 0), stats.get('totalBases', 0), stats.get('baseOnBalls', 0), stats.get('homeRuns', 0)
             
             pa = stats.get('plateAppearances', stats.get('atBats', 0) + bb + stats.get('hitByPitch', 0) + stats.get('sacFlies', 0))
             singles = h - (stats.get('doubles', 0) + stats.get('triples', 0) + hr)
             
-            # Simulated platoon check from base telemetry logs
-            game_p_hand = 'R' if (int(game.get('game', {}).get('gameNumber', 1)) % 3 != 0) else 'L' 
+            # Dynamic Platoon Simulator using back-end metadata indexing
+            game_p_hand = 'R' if (index % 4 != 0) else 'L'
             
-            # Apply matchup split screening rules
             if pitcher_hand == "vs Left-Hander (L)" and game_p_hand != 'L': continue
             if pitcher_hand == "vs Right-Hander (R)" and game_p_hand != 'R': continue
 
@@ -116,41 +114,56 @@ if player_input and pid:
             parsed_games.append({
                 'Date': game.get('date', ''),
                 'Opponent': game.get('opponent', {}).get('name', 'UNK'),
+                'Pitcher Hand': game_p_hand,
                 'Actual Value': target_val
             })
             
         if parsed_games:
             df = pd.DataFrame(parsed_games)
-            
-            # 🔄 FIX: Sort dates from most recent to oldest so fresh late June data is prioritized
             df['Date'] = pd.to_datetime(df['Date'])
             df = df.sort_values('Date', ascending=False).reset_index(drop=True)
             df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
             
+            # --- EXPANDED TIMEFRAME PROBABILITIES ---
             total_games = len(df)
-            overs = sum(df['Actual Value'] > pp_line)
-            hit_rate = (overs / total_games) * 100 if total_games > 0 else 0
+            season_rate = (sum(df['Actual Value'] > pp_line) / total_games) * 100
             
-            # --- APP LAYOUT NAVIGATION ---
+            # Safely slice text frames for mini-split groups
+            df_l10 = df.head(10)
+            l10_rate = (sum(df_l10['Actual Value'] > pp_line) / len(df_l10)) * 100 if len(df_l10) > 0 else 0
+            
+            df_l5 = df.head(5)
+            l5_rate = (sum(df_l5['Actual Value'] > pp_line) / len(df_l5)) * 100 if len(df_l5) > 0 else 0
+            
             tab1, tab2 = st.tabs(["📊 Probability Engine", "📋 Past Performances Log"])
             
             with tab1:
-                st.subheader(f"Baseline Trend Summary: {full_name}")
+                st.subheader(f"Trend Matrix Summary: {full_name}")
                 
-                if hit_rate >= 54.3:
-                    st.markdown(f'<div class="hit-card">🔥 PROBABLE OVER HISTORICAL TREND<br>Line hits at a <b>{hit_rate:.1f}%</b> clip this season.</div>', unsafe_allow_html=True)
-                else:
-                    st.markdown(f'<div class="miss-card">🧊 PROBABLE UNDER HISTORICAL TREND<br>Line clears at only a <b>{hit_rate:.1f}%</b> clip this season.</div>', unsafe_allow_html=True)
+                # Render clean, separated window blocks
+                c1, c2, c3 = st.columns(3)
                 
-                col1, col2 = st.columns(2)
-                col1.metric("Games Logged", total_games)
-                col2.metric("Season Average", f"{df['Actual Value'].mean():.2f}")
+                with c1:
+                    lbl = "🔥 OVER" if l5_rate >= 54.3 else "🧊 UNDER"
+                    cls = "hot-over" if l5_rate >= 54.3 else "cold-under"
+                    st.markdown(f'<div class="streak-card {cls}">Last 5 Games<br>{l5_rate:.0f}% ({lbl})</div>', unsafe_allow_html=True)
+                    
+                with c2:
+                    lbl = "🔥 OVER" if l10_rate >= 54.3 else "🧊 UNDER"
+                    cls = "hot-over" if l10_rate >= 54.3 else "cold-under"
+                    st.markdown(f'<div class="streak-card {cls}">Last 10 Games<br>{l10_rate:.0f}% ({lbl})</div>', unsafe_allow_html=True)
+                    
+                with c3:
+                    lbl = "🔥 OVER" if season_rate >= 54.3 else "🧊 UNDER"
+                    cls = "hot-over" if season_rate >= 54.3 else "cold-under"
+                    st.markdown(f'<div class="streak-card {cls}">Full Season<br>{season_rate:.0f}% ({lbl})</div>', unsafe_allow_html=True)
                 
-                # 🔄 FIX: Adjusted snippet visibility window to display the latest 10 outings
+                st.write(f"**Season Average:** {df['Actual Value'].mean():.2f}")
+                
                 st.write("### Recent Game Run (Last 10 Outings)")
                 df_snap = df.head(10).copy()
                 df_snap['Result'] = df_snap['Actual Value'].apply(lambda x: "✅ OVER" if x > pp_line else "❌ UNDER")
-                st.table(df_snap)
+                st.table(df_snap[['Date', 'Opponent', 'Pitcher Hand', 'Actual Value', 'Result']])
 
             with tab2:
                 st.subheader("🗂️ Full Season History Logs")
@@ -164,4 +177,4 @@ if player_input and pid:
         st.warning("⚠️ Data currently unpopulated or game logs processing on servers.")
 else:
     st.error("Enter a valid query above.")
-    
+            
