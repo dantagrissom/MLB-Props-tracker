@@ -11,7 +11,7 @@ st.markdown("""
     .hit-card { padding: 15px; border-radius: 10px; background-color: #2e7d32; color: white; margin-bottom: 20px; }
     .miss-card { padding: 15px; border-radius: 10px; background-color: #c62828; color: white; margin-bottom: 20px; }
     </style>
-""", unsafe_index=True)
+""", unsafe_allow_html=True)
 
 st.title("⚾ MLB Pure Stats Prop Board")
 
@@ -79,7 +79,6 @@ if player_input and pid:
             stats = game.get('stat', {})
             h, r, rbi, tb, bb, hr = stats.get('hits', 0), stats.get('runs', 0), stats.get('rbi', 0), stats.get('totalBases', 0), stats.get('baseOnBalls', 0), stats.get('homeRuns', 0)
             
-            # Behind-the-scenes tracking extractions
             pa = stats.get('plateAppearances', stats.get('atBats', 0) + bb + stats.get('hitByPitch', 0) + stats.get('sacFlies', 0))
             singles = h - (stats.get('doubles', 0) + stats.get('triples', 0) + hr)
             
@@ -93,7 +92,7 @@ if player_input and pid:
                 elif prop_type == "Walks": target_val = bb
                 elif prop_type == "Plate Appearances": target_val = pa
                 elif prop_type == "Singles": target_val = singles
-                elif prop_type == "Doubles": stats.get('doubles', 0)
+                elif prop_type == "Doubles": target_val = stats.get('doubles', 0)
                 elif prop_type == "Stolen Bases (SB)": target_val = stats.get('stolenBases', 0)
                 elif prop_type == "Hitter Strikeouts (Ks)": target_val = stats.get('strikeOuts', 0)
             else:
@@ -121,11 +120,10 @@ if player_input and pid:
         with tab1:
             st.subheader(f"Baseline Trend Summary: {full_name}")
             
-            # Dynamic Visual Probable Target Card
             if hit_rate >= 54.3:
-                st.markdown(f'<div class="hit-card">🔥 PROBABLE OVER HISTORICAL TREND<br>Line hits at a <b>{hit_rate:.1f}%</b> clip this season.</div>', unsafe_index=True)
+                st.markdown(f'<div class="hit-card">🔥 PROBABLE OVER HISTORICAL TREND<br>Line hits at a <b>{hit_rate:.1f}%</b> clip this season.</div>', unsafe_allow_html=True)
             else:
-                st.markdown(f'<div class="miss-card">🧊 PROBABLE UNDER HISTORICAL TREND<br>Line clears at only a <b>{hit_rate:.1f}%</b> clip this season.</div>', unsafe_index=True)
+                st.markdown(f'<div class="miss-card">🧊 PROBABLE UNDER HISTORICAL TREND<br>Line clears at only a <b>{hit_rate:.1f}%</b> clip this season.</div>', unsafe_allow_html=True)
             
             col1, col2 = st.columns(2)
             col1.metric("Games Logged", total_games)
